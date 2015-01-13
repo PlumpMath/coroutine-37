@@ -5,7 +5,9 @@
 
 #define COROUTINE_STACK_SIZE 8192
 
-typedef void *(*coroutine_func)(void *);
+typedef struct coroutine_t coroutine;
+
+typedef void *(*coroutine_func)(coroutine *k, void *arg);
 
 enum {
     COROUTINE_SUSPENDED,
@@ -16,6 +18,15 @@ enum {
 
 typedef struct coroutine_ctx_t {
 #if defined(__i386__) || defined(__i686__)
+    uint32_t eax;
+    uint32_t ebx;
+    uint32_t ecx;
+    uint32_t edx;
+    uint32_t esp;
+    uint32_t ebp;
+    uint32_t esi;
+    uint32_t edi;
+    uint32_t eip;
 #elif defined(__x86_64__)
     uint64_t rax;
     uint64_t rbx;
@@ -34,19 +45,12 @@ typedef struct coroutine_ctx_t {
     uint64_t r14;
     uint64_t r15;
     uint64_t rip;
-    uint64_t eflags;
-    uint16_t cs;
-    uint16_t ds;
-    uint16_t es;
-    uint16_t fs;
-    uint16_t gs;
-    uint16_t ss;
 #else
 #error "Do not support his platform" 
 #endif
 } coroutine_ctx;
 
-typedef struct coroutine_t {
+struct coroutine_t {
     int status;
     char *stack;
     coroutine_func func;
@@ -54,11 +58,12 @@ typedef struct coroutine_t {
     void *retval;
     coroutine_ctx from;
     coroutine_ctx ctx;
-} coroutine;
+};
 
+extern coroutine *__self;
 
 coroutine *coroutine_create(coroutine_func func, void *arg);
-void *coroutine_yield(coroutine *k, void *retval);
-void *coroutine_resume(coroutine *current, coroutine *target, void *retval);
+void *coroutine_yield(coroutine *c, void *retval);
+void *coroutine_resume(coroutine *target, void *retval);
 
 #endif
