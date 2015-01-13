@@ -64,6 +64,6 @@ extern coroutine *__self;
 
 coroutine *coroutine_create(coroutine_func func, void *arg);
 void *coroutine_yield(coroutine *c, void *retval);
-void *coroutine_resume(coroutine *target, void *retval);
+void *coroutine_resume(coroutine *c, void *retval);
 
 #endif
