@@ -23,7 +23,21 @@ coroutine *coroutine_create(coroutine_func func, void *arg)
     c->arg = arg;
 
 #if defined(__i386__) || defined(__i686__)
-    c->ctx.esp = (uint32_t)c->stack + COROUTINE_STACK_SIZE;
+    /*
+     * the target stack layout is:
+     * 
+     *  high address                                            low address
+     *    ---+-----------+---------------+------------+------------+---
+     *   ... | pointer c | whatever %eip | saved %eip | saved %ebp | ...
+     *       |           |               |            |            |
+     *    ---+-----------+---------------+------------+------------+---
+     *                                                  ^
+     *                                                  |___ %ebp, %esp
+     *                                                      in coroutine_swap_ctx
+     */
+    c->ctx.esp = (uint32_t)c->stack + COROUTINE_STACK_SIZE - sizeof(uint32_t);
+    *((coroutine **)c->ctx.esp) = c;
+    c->ctx.esp -= 3 * sizeof(uint32_t);
     c->ctx.eip = (uint32_t)coroutine_run;
 #elif defined(__x86_64__)
     c->ctx.rsp = (uint64_t)c->stack + COROUTINE_STACK_SIZE;
@@ -40,6 +54,41 @@ coroutine *coroutine_create(coroutine_func func, void *arg)
 static void coroutine_swap_ctx(coroutine_ctx *current, coroutine_ctx *target)
 {
 #if defined(__i386__) || defined(__i686__)
+    __asm__ (
+            "pushl    %%edi\n\t"
+            "pushl    %%esi\n\t"
+            "movl     8(%%ebp), %%edi\n\t" // current
+            "movl     12(%%ebp), %%esi\n\t" // target
+            // save
+            "movl     %%eax, (%%edi)\n\t" // eax
+            "movl     %%ebx, 4(%%edi)\n\t" // ebx
+            "movl     %%ecx, 8(%%edi)\n\t" // ecx
+            "movl     %%edx, 12(%%edi)\n\t" // edx
+            "leal     8(%%esp), %%eax\n\t"
+            "movl     %%eax, 16(%%edi)\n\t" // esp
+            "movl     (%%ebp), %%eax\n\t"
+            "movl     %%eax, 20(%%edi)\n\t" // ebp
+            "popl     %%eax\n\t"
+            "movl     %%eax, 24(%%edi)\n\t" // esi
+            "popl     %%eax\n\t"
+            "movl     %%eax, 28(%%edi)\n\t" // edi
+            "movl     4(%%ebp), %%eax\n\t"
+            "movl     %%eax, 32(%%edi)\n\t" // eip
+            // set
+            "movl     4(%%esi), %%ebx\n\t" // ebx
+            "movl     8(%%esi), %%ecx\n\t" // ecx
+            "movl     12(%%esi), %%edx\n\t" // edx
+            "movl     16(%%esi), %%esp\n\t" // esp
+            "movl     20(%%esi), %%eax\n\t"
+            "movl     %%eax, (%%esp)\n\t" // ebp
+            "movl     %%esp, %%ebp\n\t"
+            "movl     28(%%esi), %%edi\n\t" // edi
+            "movl     32(%%esi), %%eax\n\t"
+            "movl     %%eax, 4(%%esp)\n\t" // eip
+            "movl     (%%esi), %%eax\n\t" // eax
+            "movl     24(%%esi), %%esi\n\t" // esi
+            :::
+            );
 #elif defined(__x86_64__)
     __asm__ (
             // save
@@ -48,7 +97,7 @@ static void coroutine_swap_ctx(coroutine_ctx *current, coroutine_ctx *target)
             "movq    %%rcx, 16(%%rdi)\n\t" // rcx
             "movq    %%rdx, 24(%%rdi)\n\t" // rdx
             "movq    %%rsp, 32(%%rdi)\n\t" // rsp
-            "movq    (%%rsp), %%rax\n\t"
+            "movq    (%%rbp), %%rax\n\t"
             "movq    %%rax, 40(%%rdi)\n\t" // rbp
             "movq    %%rsi, 48(%%rdi)\n\t" // rsi
             "movq    %%rdi, 56(%%rdi)\n\t" // rdi
@@ -60,7 +109,7 @@ static void coroutine_swap_ctx(coroutine_ctx *current, coroutine_ctx *target)
             "movq    %%r13, 104(%%rdi)\n\t" // r13
             "movq    %%r14, 112(%%rdi)\n\t" // r14
             "movq    %%r15, 120(%%rdi)\n\t" // r15
-            "movq    8(%%rsp), %%rax\n\t"
+            "movq    8(%%rbp), %%rax\n\t"
             "movq    %%rax, 128(%%rdi)\n\t" // rip
             // set
             "movq    8(%%rsi), %%rbx\n\t"  // rbx
@@ -81,7 +130,7 @@ static void coroutine_swap_ctx(coroutine_ctx *current, coroutine_ctx *target)
             "movq    120(%%rsi), %%r15\n\t"  // r15
             "movq    128(%%rsi), %%rax\n\t"
             "movq    %%rax, 8(%%rsp)\n\t" // rip
-            "movw    144(%%rsi), %%ax\n\t"
+            //"movw    144(%%rsi), %%ax\n\t"
             "movq    (%%rsi), %%rax\n\t" // rax
             "movq    48(%%rsi), %%rsi\n\t" // rsi
             :::
