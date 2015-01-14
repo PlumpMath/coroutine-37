@@ -63,6 +63,7 @@ struct coroutine_t {
 extern coroutine *__self;
 
 coroutine *coroutine_create(coroutine_func func, void *arg);
+void coroutine_destroy(coroutine *c);
 void *coroutine_yield(coroutine *c, void *retval);
 void *coroutine_resume(coroutine *c, void *retval);
 

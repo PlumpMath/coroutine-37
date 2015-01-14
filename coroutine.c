@@ -48,6 +48,12 @@ coroutine *coroutine_create(coroutine_func func, void *arg)
 }
 
 
+void coroutine_destroy(coroutine *c)
+{
+    free(c);
+}
+
+
 void coroutine_swap_ctx(coroutine_ctx *current, coroutine_ctx *target) __attribute__((noinline));
 #if defined(__i386__) || defined(__i686__)
     __asm__ (
